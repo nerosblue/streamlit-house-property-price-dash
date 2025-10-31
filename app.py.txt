@@ -1,0 +1,89 @@
+import streamlit as st
+import pandas as pd
+import altair as alt
+
+# --- Page Configuration ---
+st.set_page_config(
+    page_title="Property Price Visualizer",
+    layout="wide"
+)
+
+# --- Data Loading ---
+# Use @st.cache_data to load and clean the data only once
+@st.cache_data
+def load_data(csv_path):
+    try:
+        df = pd.read_csv(csv_path)
+    except FileNotFoundError:
+        st.error(f"Error: File '{csv_path}' not found.")
+        st.stop()
+        
+    df['Date'] = pd.to_datetime(df['Date'])
+    return df
+
+# Load the data
+df = load_data("Average-prices-Property-Type-2025-06.csv")
+
+# --- Sidebar Filters ---
+st.sidebar.title("Filters")
+
+# Get a list of all unique regions, with 'United Kingdom' at the top
+all_regions = sorted(df['Region_Name'].unique())
+if "United Kingdom" in all_regions:
+    all_regions.remove("United Kingdom")
+    all_regions = ["United Kingdom"] + all_regions
+
+# Create a select box for the user to choose a region
+selected_region = st.sidebar.selectbox(
+    "Select a Region:",
+    options=all_regions,
+    index=0 # Default to the first item (United Kingdom)
+)
+
+# --- Main App ---
+st.title(f"Property Price Analysis 🏡")
+st.subheader(f"Showing data for: {selected_region}")
+
+# Filter the main DataFrame based on the selected region
+df_region = df[df['Region_Name'] == selected_region].copy()
+
+# --- Chart ---
+st.header("Price Trends by Property Type")
+
+# Columns to plot
+price_cols = [
+    'Detached_Average_Price', 
+    'Semi_Detached_Average_Price', 
+    'Terraced_Average_Price', 
+    'Flat_Average_Price'
+]
+
+# "Melt" the DataFrame to make it long-form, which is what Altair needs
+# This turns 4 price columns into one "Property Type" column and one "Average Price" column
+df_melted = df_region.melt(
+    id_vars=['Date'], 
+    value_vars=price_cols, 
+    var_name='Property Type', 
+    value_name='Average Price'
+)
+
+# Create the Altair line chart
+chart = alt.Chart(df_melted).mark_line(point=True).encode(
+    x=alt.X('Date', title='Date'),
+    y=alt.Y('Average Price', title='Average Price (GBP)', scale=alt.Scale(zero=False)),
+    color='Property Type', # This creates the 4 different colored lines
+    tooltip=[
+        alt.Tooltip('Date', format='%Y-%m'), 
+        'Property Type', 
+        alt.Tooltip('Average Price', format=',.0f')
+    ]
+).properties(
+    title=f"Average Price by Property Type in {selected_region}"
+).interactive() # .interactive() makes the chart zoomable and pannable
+
+# Display the chart in the Streamlit app
+st.altair_chart(chart, use_container_width=True)
+
+# Show a snippet of the data used for the chart
+st.subheader("Latest Data for Selected Region")
+st.dataframe(df_region.sort_values(by='Date', ascending=False).head(5), use_container_width=True)
